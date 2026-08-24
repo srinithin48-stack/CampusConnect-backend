@@ -1,0 +1,298 @@
+{
+  "events": [
+    {
+      "id": "1",
+      "title": "AI Hackathon Sprint",
+      "category": "Technical",
+      "date": "August 12, 2026",
+      "venue": "Innovation Lab",
+      "description": "A fast-paced coding challenge for students building smart campus solutions.",
+      "details": [
+        "Team of 3 to 5 members",
+        "Prizes for top prototypes",
+        "Open to all departments"
+      ]
+    },
+    {
+      "id": "2",
+      "title": "Design Thinking Workshop",
+      "category": "Workshop",
+      "date": "August 20, 2026",
+      "venue": "Designing Lab",
+      "description": "Learn how to turn ideas into user-friendly experiences through guided exercises.",
+      "details": [
+        "Hands-on activity sheets",
+        "Mentor support included",
+        "Beginner friendly"
+      ]
+    },
+    {
+      "id": "3",
+      "title": "Cultural Fest Parade",
+      "category": "Cultural",
+      "date": "August 30, 2026",
+      "venue": "Main Auditorium",
+      "description": "Enjoy music, dance, and student performances in a vibrant night celebration.",
+      "details": [
+        "Food stalls available",
+        "Live performances from clubs",
+        "Free entry for students"
+      ]
+    },
+    {
+      "id": "4",
+      "title": "Intercollege Football Cup",
+      "category": "Sports",
+      "date": "September 2, 2026",
+      "venue": "Athletic Ground",
+      "description": "Cheer for the college team in a high-energy match with friendly competition.",
+      "details": [
+        "Matches begin at 4 PM",
+        "Spectator seating available",
+        "Merchandise booth on site"
+      ]
+    },
+    {
+      "id": "5",
+      "title": "Startup Innovation Meetup",
+      "category": "Technical",
+      "date": "September 22, 2026",
+      "venue": "Innovation Lab",
+      "description": "Meet aspiring entrepreneurs and learn how to transform innovative ideas into successful startups.",
+      "details": [
+        "Startup founder interactions",
+        "Networking session",
+        "Idea pitching opportunity"
+      ]
+    },
+    {
+      "id": "6",
+      "title": "Coding Bootcamp",
+      "category": "Workshop",
+      "date": "October 2, 2026",
+      "venue": "Computer Lab",
+      "description": "Improve your programming skills through practical coding sessions and problem-solving challenges.",
+      "details": [
+        "JavaScript and React sessions",
+        "Hands-on coding exercises",
+        "Participation certificate"
+      ]
+    },
+    {
+      "id": "7",
+      "title": "Cricket Premier League",
+      "category": "Sports",
+      "date": "September 16, 2026",
+      "venue": "College Cricket Ground",
+      "description": "An exciting departmental cricket tournament for students.",
+      "details": [
+        "T20 format",
+        "Department-wise teams",
+        "Best Player Award",
+        "Live scoreboard"
+      ]
+    },
+    {
+      "id": "8",
+      "title": "Photography Contest",
+      "category": "Cultural",
+      "date": "October 8, 2026",
+      "venue": "Campus Grounds",
+      "description": "Capture memorable moments around campus and showcase your photography skills.",
+      "details": [
+        "Theme: Campus Life",
+        "DSLR or mobile photography allowed",
+        "Best photo exhibition",
+        "Winner receives photography kit"
+      ]
+    }
+  ],
+  "registrations": [
+    {
+      "name": "Srinithi N",
+      "email": "srinithin48@gmail.com",
+      "department": "information technology",
+      "year": "3rd Year",
+      "event": "Cultural Fest Parade",
+      "createdAt": "2026-08-11T09:14:47.669Z",
+      "id": "wKxiwNeLAl4"
+    },
+    {
+      "name": "kavya ",
+      "email": "kavyasri24@gmail.com",
+      "department": "information technology",
+      "year": "3rd Year",
+      "event": "Startup Innovation Meetup",
+      "createdAt": "2026-08-12T05:25:52.988Z",
+      "id": "F-upWSmEjpo"
+    },
+    {
+      "name": "Srinithi N",
+      "email": "srinithin48@gmail.com",
+      "department": "information technology",
+      "year": "3rd Year",
+      "event": "Coding Bootcamp",
+      "createdAt": "2026-08-12T12:29:48.273Z",
+      "id": "Fn5_Nvkvhs4"
+    },
+    {
+      "name": "Srinithi N",
+      "email": "srinithin48@gmail.com",
+      "department": "information technology",
+      "year": "1st Year",
+      "event": "Design Thinking Workshop",
+      "createdAt": "2026-08-12T12:38:03.853Z",
+      "id": "i3GTcfe8vV4"
+    },
+    {
+      "name": "kavyaa",
+      "email": "abc@gmail.com",
+      "department": "information technology",
+      "year": "3rd Year",
+      "event": "Coding Bootcamp",
+      "createdAt": "2026-08-12T12:47:53.557Z",
+      "id": "4zQ1OsSGPME"
+    },
+    {
+      "id": "969cdd6a-6260-48fa-b2a5-a4a0b335e2cd",
+      "name": "hema ",
+      "email": "hema123@gmail.com",
+      "department": "computer science ",
+      "year": "3rd Year",
+      "event": "Coding Bootcamp",
+      "createdAt": "2026-08-20T10:08:59.284Z"
+    },
+    {
+      "id": "a99280fa-004c-4500-8634-bd760f9a517d",
+      "name": "hema ",
+      "email": "hema123@gmail.com",
+      "department": "computer science ",
+      "year": "3rd Year",
+      "event": "Startup Innovation Meetup",
+      "createdAt": "2026-08-20T10:33:53.780Z"
+    },
+    {
+      "id": "b49a2ea3-5522-4ba1-bfb8-77f70ebeecf5",
+      "name": "Test Student",
+      "email": "test@example.com",
+      "department": "Information Technology",
+      "year": "3rd Year",
+      "event": "Tech Fest",
+      "createdAt": "2026-08-24T07:43:09.285Z"
+    },
+    {
+      "id": "8fe4d8e0-158a-41ee-b1cb-e6394fe5040c",
+      "name": "abc",
+      "email": "abc@gmail.com",
+      "department": "computer science ",
+      "year": "3rd Year",
+      "event": "Intercollege Football Cup",
+      "createdAt": "2026-08-24T10:16:17.651Z"
+    }
+  ],
+  "telemetry": [
+    {
+      "id": "a8Kp2LmX7Q",
+      "student": {
+        "name": "  Asha Nair "
+      },
+      "event": {
+        "title": " AI Hackathon Sprint "
+      },
+      "action": " viewed ",
+      "timestamp": "2026-08-01T09:15:00.000Z",
+      "status": " success "
+    },
+    {
+      "id": "b4Nq9RsT3W",
+      "studentName": "Rohan Mehta",
+      "eventName": "Design Thinking Workshop",
+      "action": "registered",
+      "dateTime": "2026-08-01T10:40:00.000Z",
+      "status": "confirmed"
+    },
+    {
+      "id": "c7Vx1MzP6K",
+      "student": {
+        "name": null
+      },
+      "event": {
+        "title": " Cultural Fest Parade"
+      },
+      "action": " saved ",
+      "timestamp": "2026-08-02T08:05:00.000Z",
+      "status": "pending"
+    },
+    {
+      "id": "d2Yw8HtL5R",
+      "student": {
+        "name": "Meera Iyer"
+      },
+      "event": null,
+      "action": " viewed ",
+      "timestamp": null,
+      "status": "success"
+    },
+    {
+      "id": "e9Jk3QsF7N",
+      "student": {
+        "name": "  Kabir Shah"
+      },
+      "event": {
+        "title": "Coding Bootcamp"
+      },
+      "action": " Registered ",
+      "timestamp": "2026-08-03T14:30:00.000Z",
+      "status": "Success"
+    },
+    {
+      "id": "f6Lp4WxZ2M",
+      "studentName": "",
+      "eventName": "Photography Contest",
+      "action": null,
+      "dateTime": "2026-08-04T11:20:00.000Z",
+      "status": ""
+    },
+    {
+      "studentName": "kavya",
+      "eventName": "Startup Innovation Meetup",
+      "action": "registered",
+      "dateTime": "2026-08-12T05:25:52.988Z",
+      "status": "confirmed",
+      "id": "_7PywVz9eVY"
+    },
+    {
+      "studentName": "Srinithi N",
+      "eventName": "Coding Bootcamp",
+      "action": "registered",
+      "dateTime": "2026-08-12T12:29:48.273Z",
+      "status": "confirmed",
+      "id": "JSw8ZxRY3MQ"
+    },
+    {
+      "studentName": "kavyaa",
+      "eventName": "Coding Bootcamp",
+      "action": "registered",
+      "dateTime": "2026-08-12T12:47:53.557Z",
+      "status": "confirmed",
+      "id": "vl9RlzEg0R0"
+    },
+    {
+      "id": "88d446bf-f0a8-44f7-92ae-99e65312032f",
+      "studentName": "hema",
+      "eventName": "Startup Innovation Meetup",
+      "action": "registered",
+      "dateTime": "2026-08-20T10:33:53.780Z",
+      "status": "confirmed"
+    },
+    {
+      "id": "29256f87-7213-48b2-b74a-1e84aa69ecfa",
+      "studentName": "abc",
+      "eventName": "Intercollege Football Cup",
+      "action": "registered",
+      "dateTime": "2026-08-24T10:16:17.651Z",
+      "status": "confirmed"
+    }
+  ],
+  "$schema": "./node_modules/json-server/schema.json"
+}
