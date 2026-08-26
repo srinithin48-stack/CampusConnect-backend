@@ -25,7 +25,15 @@ const saveDatabase = (database) => writeFile(databasePath, `${JSON.stringify(dat
 const createHttpError = (status, message) => Object.assign(new Error(message), { status });
 
 app.use(requestLogger);
-app.use(cors({ origin: 'http://localhost:5173' }));
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://campusconnect-frontend.netlify.app'
+];
+
+app.use(cors({
+  origin: allowedOrigins
+}));
+
 app.use(express.json());
 
 app.get('/api/events', async (request, response, next) => {
