@@ -188,6 +188,24 @@
       "year": "3rd Year",
       "event": "Intercollege Football Cup",
       "createdAt": "2026-08-24T10:16:17.651Z"
+    },
+    {
+      "id": "58db6e9a-87b7-45d7-9192-73168aea76af",
+      "name": "Srinithi N",
+      "email": "srinithin48@gmail.com",
+      "department": "computer science ",
+      "year": "4th Year",
+      "event": "Design Thinking Workshop",
+      "createdAt": "2026-09-04T14:38:53.425Z"
+    },
+    {
+      "id": "f932111c-2959-417f-b702-ef31ee8f0b6a",
+      "name": "malathi",
+      "email": "malathi123@gmail.com",
+      "department": "artificial intelligence and data science",
+      "year": "3rd Year",
+      "event": "Startup Innovation Meetup",
+      "createdAt": "2026-09-05T11:02:54.606Z"
     }
   ],
   "telemetry": [
@@ -291,6 +309,54 @@
       "eventName": "Intercollege Football Cup",
       "action": "registered",
       "dateTime": "2026-08-24T10:16:17.651Z",
+      "status": "confirmed"
+    },
+    {
+      "id": "f1326da1-a545-4c23-a5c4-2c966db9334f",
+      "studentName": "Srinithi N",
+      "eventName": "Design Thinking Workshop",
+      "action": "registered",
+      "dateTime": "2026-09-04T14:38:53.425Z",
+      "status": "confirmed"
+    },
+    {
+      "id": "c6545ed2-77a7-43bc-adaa-7b10dfe5ea3c",
+      "studentName": "malathi",
+      "eventName": "Startup Innovation Meetup",
+      "action": "registered",
+      "dateTime": "2026-09-05T11:02:54.606Z",
+      "status": "confirmed"
+    },
+    {
+      "id": "7f54784f-bcd4-449e-abc1-4844922e0c41",
+      "studentName": "hema",
+      "eventName": "Cultural Fest Parade",
+      "action": "registered",
+      "dateTime": "2026-09-05T11:46:29.782Z",
+      "status": "confirmed"
+    },
+    {
+      "id": "b3cf5a63-5963-4a4e-ba2b-83d395abfc22",
+      "studentName": "kaav",
+      "eventName": "Design Thinking Workshop",
+      "action": "registered",
+      "dateTime": "2026-09-05T11:48:23.037Z",
+      "status": "confirmed"
+    },
+    {
+      "id": "017fcabf-84d0-458c-a6d1-f3fd0a07d1b9",
+      "studentName": "abi",
+      "eventName": "Startup Innovation Meetup",
+      "action": "registered",
+      "dateTime": "2026-09-05T13:23:36.828Z",
+      "status": "confirmed"
+    },
+    {
+      "id": "00ebf5d8-6c92-49fd-82cb-1cf284852765",
+      "studentName": "Srinithi N",
+      "eventName": "Photography Contest",
+      "action": "registered",
+      "dateTime": "2026-09-05T13:29:04.714Z",
       "status": "confirmed"
     }
   ],
