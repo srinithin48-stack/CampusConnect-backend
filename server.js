@@ -1,32 +1,24 @@
+import bcrypt from 'bcrypt';
 import cors from 'cors';
-import { createHash } from 'node:crypto';
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { connectMongoDB } from './db/mongodb.js';
 import sequelize from './db/sequelize.js';
+import { authenticate } from './middleware/auth.js';
 import Event from './models/Event.js';
 import SystemLog from './models/SystemLog.js';
 import { Booking, User } from './models/index.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
-const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-const databasePath = path.resolve(currentDirectory, 'db.json');
+const PASSWORD_HASH_ROUNDS = 10;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
 const requestLogger = (request, response, next) => {
   console.log(`[${new Date().toISOString()}] ${request.method} ${request.originalUrl}`);
   next();
 };
-
-const readDatabase = async () => {
-  const content = await readFile(databasePath, 'utf8');
-  return JSON.parse(content);
-};
-
-const saveDatabase = (database) => writeFile(databasePath, `${JSON.stringify(database, null, 2)}\n`);
 
 const createHttpError = (status, message) => Object.assign(new Error(message), { status });
 
@@ -95,12 +87,13 @@ app.put('/api/events/:id', updateEvent);
 const createRegistration = async (request, response, next) => {
   try {
     const { name, email, department, year, event, createdAt, tenantId } = request.body ?? {};
-    if (![name, email, department, year, event, tenantId].every((value) => typeof value === 'string' && value.trim())) {
-      throw createHttpError(400, 'Name, email, department, year, event, and tenantId are required.');
+    if (![name, email, department, year, event].every((value) => typeof value === 'string' && value.trim())) {
+      throw createHttpError(400, 'Name, email, department, year, and event are required.');
     }
 
-    const normalizedTenantId = tenantId.trim();
-    if (normalizedTenantId.length > 36) throw createHttpError(400, 'Tenant ID must not exceed 36 characters.');
+    const resolvedTenantId = typeof tenantId === 'string' && tenantId.trim() ? tenantId.trim() : 'default-tenant';
+    if (resolvedTenantId.length > 36) throw createHttpError(400, 'Tenant ID must not exceed 36 characters.');
+    const normalizedTenantId = resolvedTenantId;
 
     const registration = await sequelize.transaction(async (transaction) => {
       const [user] = await User.findOrCreate({
@@ -109,7 +102,7 @@ const createRegistration = async (request, response, next) => {
           tenantId: normalizedTenantId,
           fullName: name.trim(),
           email: email.trim().toLowerCase(),
-          passwordHash: createHash('sha256').update(randomUUID()).digest('hex')
+          passwordHash: await bcrypt.hash(randomUUID(), PASSWORD_HASH_ROUNDS)
         },
         transaction
       });
@@ -133,6 +126,25 @@ const createRegistration = async (request, response, next) => {
       };
     });
 
+    try {
+      await SystemLog.create({
+        action: 'EVENT_REGISTERED',
+        studentName: registration.name,
+        eventName: registration.event,
+        status: 'Confirmed',
+        dateTime: new Date(registration.createdAt),
+        details: {
+          email: registration.email,
+          department: registration.department,
+          year: registration.year,
+          tenantId: normalizedTenantId,
+          bookingId: registration.id
+        }
+      });
+    } catch (error) {
+      console.error('Unable to write EVENT_REGISTERED system log:', error.message);
+    }
+
     response.status(201).json(registration);
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
@@ -143,6 +155,81 @@ const createRegistration = async (request, response, next) => {
 };
 
 app.post(['/api/registrations', '/registrations'], createRegistration);
+
+const createAccount = async (request, response, next) => {
+  try {
+    const { fullName, email, password, tenantId } = request.body ?? {};
+    if (![fullName, email, password, tenantId].every((value) => typeof value === 'string' && value.trim())) {
+      throw createHttpError(400, 'Full name, email, password, and college are required.');
+    }
+
+    const normalizedTenantId = tenantId.trim();
+    if (normalizedTenantId.length > 36) throw createHttpError(400, 'Tenant ID must not exceed 36 characters.');
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await User.findOne({ where: { tenantId: normalizedTenantId, email: normalizedEmail } });
+    if (existingUser) {
+      throw createHttpError(409, 'An account with this email already exists for the selected college.');
+    }
+
+    const user = await User.create({
+      tenantId: normalizedTenantId,
+      fullName: fullName.trim(),
+      email: normalizedEmail,
+      passwordHash: await bcrypt.hash(password, PASSWORD_HASH_ROUNDS)
+    });
+
+    response.status(201).json({
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      tenantId: user.tenantId,
+      role: user.role
+    });
+  } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return next(createHttpError(409, 'An account with this email already exists for the selected college.'));
+    }
+    next(error);
+  }
+};
+
+app.post('/api/auth/register', createAccount);
+
+const login = async (request, response, next) => {
+  try {
+    const { email, password, tenantId } = request.body ?? {};
+    if (![email, password].every((value) => typeof value === 'string' && value.trim())) {
+      throw createHttpError(400, 'Email and password are required.');
+    }
+
+    const where = { email: email.trim().toLowerCase() };
+    if (typeof tenantId === 'string' && tenantId.trim()) {
+      where.tenantId = tenantId.trim();
+    }
+
+    const user = await User.findOne({ where });
+
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      throw createHttpError(401, 'Invalid email or password.');
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, tenantId: user.tenantId, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    response.json({ token });
+  } catch (error) {
+    next(error);
+  }
+};
+
+app.post('/api/auth/login', login);
 
 const getTelemetry = async (request, response, next) => {
   try {
@@ -196,7 +283,7 @@ const getSystemLogs = async (request, response, next) => {
   }
 };
 
-app.get('/api/system-logs', getSystemLogs);
+app.get('/api/system-logs', authenticate, getSystemLogs);
 
 app.delete('/api/events/:id', async (request, response, next) => {
   try {
@@ -246,4 +333,8 @@ const startServer = async () => {
   });
 };
 
-startServer().catch((error) => console.error('Unable to start CampusConnect:', error.message));
+if (process.env.NODE_ENV !== 'test') {
+  startServer().catch((error) => console.error('Unable to start CampusConnect:', error.message));
+}
+
+export { app };
