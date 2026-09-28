@@ -1,29 +1,24 @@
+import bcrypt from 'bcrypt';
 import cors from 'cors';
-import { createHash } from 'node:crypto';
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { connectMongoDB } from './db/mongodb.js';
 import sequelize from './db/sequelize.js';
+import { authenticate } from './middleware/auth.js';
+import Event from './models/Event.js';
+import SystemLog from './models/SystemLog.js';
 import { Booking, User } from './models/index.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
-const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-const databasePath = path.resolve(currentDirectory, 'db.json');
+const PASSWORD_HASH_ROUNDS = 10;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
 const requestLogger = (request, response, next) => {
   console.log(`[${new Date().toISOString()}] ${request.method} ${request.originalUrl}`);
   next();
 };
-
-const readDatabase = async () => {
-  const content = await readFile(databasePath, 'utf8');
-  return JSON.parse(content);
-};
-
-const saveDatabase = (database) => writeFile(databasePath, `${JSON.stringify(database, null, 2)}\n`);
 
 const createHttpError = (status, message) => Object.assign(new Error(message), { status });
 
@@ -42,8 +37,7 @@ app.use(express.json());
 
 const getEvents = async (request, response, next) => {
   try {
-    const database = await readDatabase();
-    response.json(database.events ?? []);
+    response.json(await Event.find().sort({ createdAt: -1 }));
   } catch (error) {
     next(error);
   }
@@ -51,30 +45,70 @@ const getEvents = async (request, response, next) => {
 
 app.get(['/api/events', '/events'], getEvents);
 
+const createEvent = async (request, response, next) => {
+  try {
+    const event = await Event.create(request.body ?? {});
+    response.status(201).json(event);
+  } catch (error) {
+    next(error);
+  }
+};
+
+app.post('/api/events', createEvent);
+
+const getEvent = async (request, response, next) => {
+  try {
+    const event = await Event.findById(request.params.id);
+    if (!event) throw createHttpError(404, 'Event not found.');
+    response.json(event);
+  } catch (error) {
+    next(error.name === 'CastError' ? createHttpError(400, 'Invalid event ID.') : error);
+  }
+};
+
+app.get('/api/events/:id', getEvent);
+
+const updateEvent = async (request, response, next) => {
+  try {
+    const event = await Event.findByIdAndUpdate(
+      request.params.id,
+      request.body ?? {},
+      { new: true, runValidators: true }
+    );
+    if (!event) throw createHttpError(404, 'Event not found.');
+    response.json(event);
+  } catch (error) {
+    next(error.name === 'CastError' ? createHttpError(400, 'Invalid event ID.') : error);
+  }
+};
+
+app.put('/api/events/:id', updateEvent);
+
 const createRegistration = async (request, response, next) => {
   try {
-    const { name, email, department, year, event, createdAt } = request.body ?? {};
+    const { name, email, department, year, event, createdAt, tenantId } = request.body ?? {};
     if (![name, email, department, year, event].every((value) => typeof value === 'string' && value.trim())) {
       throw createHttpError(400, 'Name, email, department, year, and event are required.');
     }
 
-    const tenantId = request.get('x-tenant-id') || 'campusconnect';
-    if (tenantId.length > 36) throw createHttpError(400, 'Tenant ID must not exceed 36 characters.');
+    const resolvedTenantId = typeof tenantId === 'string' && tenantId.trim() ? tenantId.trim() : 'default-tenant';
+    if (resolvedTenantId.length > 36) throw createHttpError(400, 'Tenant ID must not exceed 36 characters.');
+    const normalizedTenantId = resolvedTenantId;
 
     const registration = await sequelize.transaction(async (transaction) => {
       const [user] = await User.findOrCreate({
-        where: { tenantId, email: email.trim().toLowerCase() },
+        where: { tenantId: normalizedTenantId, email: email.trim().toLowerCase() },
         defaults: {
-          tenantId,
+          tenantId: normalizedTenantId,
           fullName: name.trim(),
           email: email.trim().toLowerCase(),
-          passwordHash: createHash('sha256').update(randomUUID()).digest('hex')
+          passwordHash: await bcrypt.hash(randomUUID(), PASSWORD_HASH_ROUNDS)
         },
         transaction
       });
 
       const booking = await Booking.create({
-        tenantId,
+        tenantId: normalizedTenantId,
         userId: user.id,
         eventName: event.trim(),
         bookingDate: createdAt || new Date(),
@@ -92,6 +126,25 @@ const createRegistration = async (request, response, next) => {
       };
     });
 
+    try {
+      await SystemLog.create({
+        action: 'EVENT_REGISTERED',
+        studentName: registration.name,
+        eventName: registration.event,
+        status: 'Confirmed',
+        dateTime: new Date(registration.createdAt),
+        details: {
+          email: registration.email,
+          department: registration.department,
+          year: registration.year,
+          tenantId: normalizedTenantId,
+          bookingId: registration.id
+        }
+      });
+    } catch (error) {
+      console.error('Unable to write EVENT_REGISTERED system log:', error.message);
+    }
+
     response.status(201).json(registration);
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
@@ -103,10 +156,89 @@ const createRegistration = async (request, response, next) => {
 
 app.post(['/api/registrations', '/registrations'], createRegistration);
 
+const createAccount = async (request, response, next) => {
+  try {
+    const { fullName, email, password, tenantId } = request.body ?? {};
+    if (![fullName, email, password, tenantId].every((value) => typeof value === 'string' && value.trim())) {
+      throw createHttpError(400, 'Full name, email, password, and college are required.');
+    }
+
+    const normalizedTenantId = tenantId.trim();
+    if (normalizedTenantId.length > 36) throw createHttpError(400, 'Tenant ID must not exceed 36 characters.');
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await User.findOne({ where: { tenantId: normalizedTenantId, email: normalizedEmail } });
+    if (existingUser) {
+      throw createHttpError(409, 'An account with this email already exists for the selected college.');
+    }
+
+    const user = await User.create({
+      tenantId: normalizedTenantId,
+      fullName: fullName.trim(),
+      email: normalizedEmail,
+      passwordHash: await bcrypt.hash(password, PASSWORD_HASH_ROUNDS)
+    });
+
+    response.status(201).json({
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      tenantId: user.tenantId,
+      role: user.role
+    });
+  } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return next(createHttpError(409, 'An account with this email already exists for the selected college.'));
+    }
+    next(error);
+  }
+};
+
+app.post('/api/auth/register', createAccount);
+
+const login = async (request, response, next) => {
+  try {
+    const { email, password, tenantId } = request.body ?? {};
+    if (![email, password].every((value) => typeof value === 'string' && value.trim())) {
+      throw createHttpError(400, 'Email and password are required.');
+    }
+
+    const where = { email: email.trim().toLowerCase() };
+    if (typeof tenantId === 'string' && tenantId.trim()) {
+      where.tenantId = tenantId.trim();
+    }
+
+    const user = await User.findOne({ where });
+
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      throw createHttpError(401, 'Invalid email or password.');
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, tenantId: user.tenantId, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    response.json({ token });
+  } catch (error) {
+    next(error);
+  }
+};
+
+app.post('/api/auth/login', login);
+
 const getTelemetry = async (request, response, next) => {
   try {
-    const database = await readDatabase();
-    response.json(database.telemetry ?? []);
+    const telemetry = await SystemLog.find({ action: 'TELEMETRY' })
+      .sort({ createdAt: 1 });
+    response.json(telemetry.map((record) => {
+      const { _id, __v, action, details, createdAt, updatedAt, legacyId, ...fields } = record.toObject({ virtuals: true });
+      return { ...fields, id: legacyId || String(_id) };
+    }));
   } catch (error) {
     next(error);
   }
@@ -121,10 +253,13 @@ const createTelemetry = async (request, response, next) => {
       throw createHttpError(400, 'Student name, event name, action, date/time, and status are required.');
     }
 
-    const database = await readDatabase();
     const telemetryRecord = { id: randomUUID(), studentName, eventName, action, dateTime, status };
-    database.telemetry = [...(database.telemetry ?? []), telemetryRecord];
-    await saveDatabase(database);
+    const systemLog = await SystemLog.create({
+      ...telemetryRecord,
+      legacyId: telemetryRecord.id,
+      action: 'TELEMETRY',
+      details: telemetryRecord
+    });
     response.status(201).json(telemetryRecord);
   } catch (error) {
     next(error);
@@ -133,17 +268,30 @@ const createTelemetry = async (request, response, next) => {
 
 app.post(['/api/telemetry', '/telemetry'], createTelemetry);
 
-app.delete('/api/events/:id', async (request, response, next) => {
+const getSystemLogs = async (request, response, next) => {
   try {
-    const database = await readDatabase();
-    const eventIndex = (database.events ?? []).findIndex((event) => String(event.id) === request.params.id);
-    if (eventIndex === -1) throw createHttpError(404, 'Event not found.');
-
-    const [deletedEvent] = database.events.splice(eventIndex, 1);
-    await saveDatabase(database);
-    response.json({ message: 'Event deleted successfully.', event: deletedEvent });
+    const logs = await SystemLog.find().sort({ createdAt: -1 });
+    response.json(logs.map((record) => {
+      const { _id, __v, createdAt, updatedAt, legacyId, details, ...fields } = record.toObject({ virtuals: true });
+      const merged = details && typeof details === 'object' && Object.keys(details).length
+        ? { ...fields, ...details }
+        : fields;
+      return { ...merged, id: legacyId || String(_id) };
+    }));
   } catch (error) {
     next(error);
+  }
+};
+
+app.get('/api/system-logs', authenticate, getSystemLogs);
+
+app.delete('/api/events/:id', async (request, response, next) => {
+  try {
+    const deletedEvent = await Event.findByIdAndDelete(request.params.id).lean();
+    if (!deletedEvent) throw createHttpError(404, 'Event not found.');
+    response.json({ message: 'Event deleted successfully.', event: deletedEvent });
+  } catch (error) {
+    next(error.name === 'CastError' ? createHttpError(400, 'Invalid event ID.') : error);
   }
 });
 
@@ -152,7 +300,9 @@ app.use((request, response, next) => {
 });
 
 app.use((error, request, response, next) => {
-  const status = error.type === 'entity.parse.failed' ? 400 : error.status || 500;
+  const status = error.type === 'entity.parse.failed' || error.name === 'ValidationError'
+    ? 400
+    : error.status || 500;
   if (status === 500) console.error(error);
   response.status(status).json({
     error: {
@@ -163,13 +313,28 @@ app.use((error, request, response, next) => {
 });
 
 const startServer = async () => {
-  await sequelize.authenticate();
+  const [mysqlResult, mongoResult] = await Promise.allSettled([
+    sequelize.authenticate(),
+    connectMongoDB()
+  ]);
+
+  if (mysqlResult.status === 'fulfilled') {
+    console.log('MySQL connection established.');
+  } else {
+    console.error('Unable to connect to MySQL:', mysqlResult.reason.message);
+  }
+
+  if (mongoResult.status === 'rejected') {
+    console.error('Unable to connect to MongoDB:', mongoResult.reason.message);
+  }
+
   app.listen(port, () => {
     console.log(`CampusConnect Express API is running at http://localhost:${port}`);
   });
 };
 
-startServer().catch((error) => {
-  console.error('Unable to connect to MySQL:', error.message);
-  process.exitCode = 1;
-});
+if (process.env.NODE_ENV !== 'test') {
+  startServer().catch((error) => console.error('Unable to start CampusConnect:', error.message));
+}
+
+export { app };

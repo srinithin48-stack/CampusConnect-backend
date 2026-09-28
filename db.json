@@ -358,6 +358,14 @@
       "action": "registered",
       "dateTime": "2026-09-05T13:29:04.714Z",
       "status": "confirmed"
+    },
+    {
+      "id": "61654bdf-39d2-40ad-a1c8-3c5d1f7c86ef",
+      "studentName": "roshan",
+      "eventName": "Cultural Fest Parade",
+      "action": "registered",
+      "dateTime": "2026-09-08T09:53:42.333Z",
+      "status": "confirmed"
     }
   ],
   "$schema": "./node_modules/json-server/schema.json"
