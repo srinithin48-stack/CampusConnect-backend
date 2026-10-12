@@ -8,12 +8,59 @@ import sequelize from './db/sequelize.js';
 import { authenticate } from './middleware/auth.js';
 import Event from './models/Event.js';
 import SystemLog from './models/SystemLog.js';
-import { Booking, User } from './models/index.js';
+import { Booking, Tenant, User } from './models/index.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
 const PASSWORD_HASH_ROUNDS = 10;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
+const COLLEGES_API_URL = 'https://colleges-api.vercel.app/colleges';
+const COLLEGES_API_TIMEOUT_MS = 8000;
+const COLLEGE_SEARCH_MIN_LENGTH = 3;
+const COLLEGE_NAME_MIN_LENGTH = 2;
+const COLLEGE_NAME_MAX_LENGTH = 150;
+
+const slugifyCollegeName = (name) => {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 36);
+  return slug || 'college';
+};
+
+// A college identifier from the client is either a known dropdown slug
+// ('psg') or a freely-typed college name ('+ Add Other College'). Try the
+// slug first, then fall back to a case-insensitive name match.
+const findTenantByIdentifier = async (identifier, { transaction } = {}) => {
+  const value = identifier.trim();
+  const bySlug = await Tenant.findOne({ where: { slug: value }, transaction });
+  if (bySlug) return bySlug;
+
+  return Tenant.findOne({
+    where: sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), value.toLowerCase()),
+    transaction
+  });
+};
+
+const resolveOrCreateTenant = async (identifier, { transaction } = {}) => {
+  const name = identifier.trim();
+  const existing = await findTenantByIdentifier(name, { transaction });
+  if (existing) return existing;
+
+  const slug = slugifyCollegeName(name);
+  try {
+    return await Tenant.create({ slug, name }, { transaction });
+  } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      const recovered = (await findTenantByIdentifier(name, { transaction }))
+        || (await Tenant.findOne({ where: { slug }, transaction }));
+      if (recovered) return recovered;
+    }
+    throw error;
+  }
+};
 
 const requestLogger = (request, response, next) => {
   console.log(`[${new Date().toISOString()}] ${request.method} ${request.originalUrl}`);
@@ -84,6 +131,46 @@ const updateEvent = async (request, response, next) => {
 
 app.put('/api/events/:id', updateEvent);
 
+const searchColleges = async (request, response, next) => {
+  try {
+    const query = typeof request.query.q === 'string' ? request.query.q.trim() : '';
+    if (query.length < COLLEGE_SEARCH_MIN_LENGTH) {
+      throw createHttpError(400, `Search query must be at least ${COLLEGE_SEARCH_MIN_LENGTH} characters long.`);
+    }
+
+    const upstreamUrl = `${COLLEGES_API_URL}?search=${encodeURIComponent(query)}`;
+    let upstreamResponse;
+    try {
+      upstreamResponse = await fetch(upstreamUrl, { signal: AbortSignal.timeout(COLLEGES_API_TIMEOUT_MS) });
+    } catch (error) {
+      throw createHttpError(502, 'Unable to reach the college search service.');
+    }
+
+    if (!upstreamResponse.ok) {
+      throw createHttpError(502, 'The college search service returned an error.');
+    }
+
+    let payload;
+    try {
+      payload = await upstreamResponse.json();
+    } catch (error) {
+      throw createHttpError(502, 'The college search service returned an invalid response.');
+    }
+
+    const results = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : [];
+
+    response.json({ query, results });
+  } catch (error) {
+    next(error);
+  }
+};
+
+app.get('/api/colleges/search', searchColleges);
+
 const createRegistration = async (request, response, next) => {
   try {
     const { name, email, department, year, event, createdAt, tenantId } = request.body ?? {};
@@ -91,15 +178,20 @@ const createRegistration = async (request, response, next) => {
       throw createHttpError(400, 'Name, email, department, year, and event are required.');
     }
 
-    const resolvedTenantId = typeof tenantId === 'string' && tenantId.trim() ? tenantId.trim() : 'default-tenant';
-    if (resolvedTenantId.length > 36) throw createHttpError(400, 'Tenant ID must not exceed 36 characters.');
-    const normalizedTenantId = resolvedTenantId;
+    const resolvedTenantName = typeof tenantId === 'string' && tenantId.trim() ? tenantId.trim() : 'default-tenant';
+    if (resolvedTenantName.length < COLLEGE_NAME_MIN_LENGTH || resolvedTenantName.length > COLLEGE_NAME_MAX_LENGTH) {
+      throw createHttpError(400, `College name must be between ${COLLEGE_NAME_MIN_LENGTH} and ${COLLEGE_NAME_MAX_LENGTH} characters.`);
+    }
 
+    let tenantSlugForLog;
     const registration = await sequelize.transaction(async (transaction) => {
+      const tenant = await resolveOrCreateTenant(resolvedTenantName, { transaction });
+      tenantSlugForLog = tenant.slug;
+
       const [user] = await User.findOrCreate({
-        where: { tenantId: normalizedTenantId, email: email.trim().toLowerCase() },
+        where: { tenantId: tenant.id, email: email.trim().toLowerCase() },
         defaults: {
-          tenantId: normalizedTenantId,
+          tenantId: tenant.id,
           fullName: name.trim(),
           email: email.trim().toLowerCase(),
           passwordHash: await bcrypt.hash(randomUUID(), PASSWORD_HASH_ROUNDS)
@@ -108,7 +200,7 @@ const createRegistration = async (request, response, next) => {
       });
 
       const booking = await Booking.create({
-        tenantId: normalizedTenantId,
+        tenantId: tenant.id,
         userId: user.id,
         eventName: event.trim(),
         bookingDate: createdAt || new Date(),
@@ -137,7 +229,7 @@ const createRegistration = async (request, response, next) => {
           email: registration.email,
           department: registration.department,
           year: registration.year,
-          tenantId: normalizedTenantId,
+          tenantId: tenantSlugForLog,
           bookingId: registration.id
         }
       });
@@ -149,6 +241,9 @@ const createRegistration = async (request, response, next) => {
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
       return next(createHttpError(409, 'This student is already registered for this event.'));
+    }
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return next(createHttpError(400, 'Selected college is not recognized.'));
     }
     next(error);
   }
@@ -163,32 +258,46 @@ const createAccount = async (request, response, next) => {
       throw createHttpError(400, 'Full name, email, password, and college are required.');
     }
 
-    const normalizedTenantId = tenantId.trim();
-    if (normalizedTenantId.length > 36) throw createHttpError(400, 'Tenant ID must not exceed 36 characters.');
+    const tenantName = tenantId.trim();
+    if (tenantName.length < COLLEGE_NAME_MIN_LENGTH || tenantName.length > COLLEGE_NAME_MAX_LENGTH) {
+      throw createHttpError(400, `College name must be between ${COLLEGE_NAME_MIN_LENGTH} and ${COLLEGE_NAME_MAX_LENGTH} characters.`);
+    }
     const normalizedEmail = email.trim().toLowerCase();
 
-    const existingUser = await User.findOne({ where: { tenantId: normalizedTenantId, email: normalizedEmail } });
-    if (existingUser) {
-      throw createHttpError(409, 'An account with this email already exists for the selected college.');
-    }
+    const { user, tenant } = await sequelize.transaction(async (transaction) => {
+      const resolvedTenant = await resolveOrCreateTenant(tenantName, { transaction });
 
-    const user = await User.create({
-      tenantId: normalizedTenantId,
-      fullName: fullName.trim(),
-      email: normalizedEmail,
-      passwordHash: await bcrypt.hash(password, PASSWORD_HASH_ROUNDS)
+      const existingUser = await User.findOne({
+        where: { tenantId: resolvedTenant.id, email: normalizedEmail },
+        transaction
+      });
+      if (existingUser) {
+        throw createHttpError(409, 'An account with this email already exists for the selected college.');
+      }
+
+      const createdUser = await User.create({
+        tenantId: resolvedTenant.id,
+        fullName: fullName.trim(),
+        email: normalizedEmail,
+        passwordHash: await bcrypt.hash(password, PASSWORD_HASH_ROUNDS)
+      }, { transaction });
+
+      return { user: createdUser, tenant: resolvedTenant };
     });
 
     response.status(201).json({
       id: user.id,
       fullName: user.fullName,
       email: user.email,
-      tenantId: user.tenantId,
+      tenantId: tenant.slug,
       role: user.role
     });
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
       return next(createHttpError(409, 'An account with this email already exists for the selected college.'));
+    }
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return next(createHttpError(400, 'Selected college is not recognized.'));
     }
     next(error);
   }
@@ -205,7 +314,9 @@ const login = async (request, response, next) => {
 
     const where = { email: email.trim().toLowerCase() };
     if (typeof tenantId === 'string' && tenantId.trim()) {
-      where.tenantId = tenantId.trim();
+      const tenant = await findTenantByIdentifier(tenantId.trim());
+      if (!tenant) throw createHttpError(401, 'Invalid email or password.');
+      where.tenantId = tenant.id;
     }
 
     const user = await User.findOne({ where });

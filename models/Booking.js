@@ -1,12 +1,13 @@
 import { DataTypes, Model } from 'sequelize';
 import sequelize from '../db/sequelize.js';
+import Tenant from './Tenant.js';
 import User from './User.js';
 
 class Booking extends Model {}
 
 Booking.init({
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-  tenantId: { type: DataTypes.STRING(36), allowNull: false, validate: { notEmpty: true } },
+  tenantId: { type: DataTypes.INTEGER, allowNull: false },
   userId: { type: DataTypes.INTEGER, allowNull: false },
   eventName: { type: DataTypes.STRING(150), allowNull: false, validate: { notEmpty: true } },
   status: {
@@ -29,5 +30,8 @@ Booking.init({
 
 User.hasMany(Booking, { foreignKey: 'userId', as: 'bookings' });
 Booking.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+Tenant.hasMany(Booking, { foreignKey: 'tenantId', as: 'bookings' });
+Booking.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 
 export default Booking;
