@@ -19,6 +19,8 @@ const COLLEGES_API_TIMEOUT_MS = 8000;
 const COLLEGE_SEARCH_MIN_LENGTH = 3;
 const COLLEGE_NAME_MIN_LENGTH = 2;
 const COLLEGE_NAME_MAX_LENGTH = 150;
+const PASSWORD_MIN_LENGTH = 8;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const slugifyCollegeName = (name) => {
   const slug = name
@@ -69,6 +71,11 @@ const requestLogger = (request, response, next) => {
 
 const createHttpError = (status, message) => Object.assign(new Error(message), { status });
 
+// Mongoose's Model.create()/findByIdAndUpdate() treat an array body as a bulk
+// operation rather than a single document, so reject anything that isn't a
+// plain JSON object up front.
+const isPlainObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+
 app.use(requestLogger);
 const allowedOrigins = [
   'http://localhost:3000',
@@ -94,14 +101,17 @@ app.get(['/api/events', '/events'], getEvents);
 
 const createEvent = async (request, response, next) => {
   try {
-    const event = await Event.create(request.body ?? {});
+    if (!isPlainObject(request.body)) {
+      throw createHttpError(400, 'Request body must be a JSON object.');
+    }
+    const event = await Event.create(request.body);
     response.status(201).json(event);
   } catch (error) {
     next(error);
   }
 };
 
-app.post('/api/events', createEvent);
+app.post('/api/events', authenticate, createEvent);
 
 const getEvent = async (request, response, next) => {
   try {
@@ -117,9 +127,12 @@ app.get('/api/events/:id', getEvent);
 
 const updateEvent = async (request, response, next) => {
   try {
+    if (!isPlainObject(request.body)) {
+      throw createHttpError(400, 'Request body must be a JSON object.');
+    }
     const event = await Event.findByIdAndUpdate(
       request.params.id,
-      request.body ?? {},
+      request.body,
       { new: true, runValidators: true }
     );
     if (!event) throw createHttpError(404, 'Event not found.');
@@ -129,7 +142,7 @@ const updateEvent = async (request, response, next) => {
   }
 };
 
-app.put('/api/events/:id', updateEvent);
+app.put('/api/events/:id', authenticate, updateEvent);
 
 const searchColleges = async (request, response, next) => {
   try {
@@ -176,6 +189,9 @@ const createRegistration = async (request, response, next) => {
     const { name, email, department, year, event, createdAt, tenantId } = request.body ?? {};
     if (![name, email, department, year, event].every((value) => typeof value === 'string' && value.trim())) {
       throw createHttpError(400, 'Name, email, department, year, and event are required.');
+    }
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      throw createHttpError(400, 'Enter a valid email address.');
     }
 
     const resolvedTenantName = typeof tenantId === 'string' && tenantId.trim() ? tenantId.trim() : 'default-tenant';
@@ -256,6 +272,12 @@ const createAccount = async (request, response, next) => {
     const { fullName, email, password, tenantId } = request.body ?? {};
     if (![fullName, email, password, tenantId].every((value) => typeof value === 'string' && value.trim())) {
       throw createHttpError(400, 'Full name, email, password, and college are required.');
+    }
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      throw createHttpError(400, 'Enter a valid email address.');
+    }
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      throw createHttpError(400, `Password must be at least ${PASSWORD_MIN_LENGTH} characters long.`);
     }
 
     const tenantName = tenantId.trim();
@@ -396,7 +418,7 @@ const getSystemLogs = async (request, response, next) => {
 
 app.get('/api/system-logs', authenticate, getSystemLogs);
 
-app.delete('/api/events/:id', async (request, response, next) => {
+app.delete('/api/events/:id', authenticate, async (request, response, next) => {
   try {
     const deletedEvent = await Event.findByIdAndDelete(request.params.id).lean();
     if (!deletedEvent) throw createHttpError(404, 'Event not found.');
@@ -410,8 +432,10 @@ app.use((request, response, next) => {
   next(createHttpError(404, `Route ${request.method} ${request.originalUrl} was not found.`));
 });
 
+const VALIDATION_ERROR_NAMES = new Set(['ValidationError', 'SequelizeValidationError']);
+
 app.use((error, request, response, next) => {
-  const status = error.type === 'entity.parse.failed' || error.name === 'ValidationError'
+  const status = error.type === 'entity.parse.failed' || VALIDATION_ERROR_NAMES.has(error.name)
     ? 400
     : error.status || 500;
   if (status === 500) console.error(error);
