@@ -18,4 +18,14 @@ export const authenticate = (request, response, next) => {
   });
 };
 
+// Must run after `authenticate`, which populates `request.user`.
+export const requireRole = (...allowedRoles) => (request, response, next) => {
+  if (!request.user || !allowedRoles.includes(request.user.role)) {
+    return next(createHttpError(403, 'You do not have permission to access this resource.'));
+  }
+  next();
+};
+
+export const requireAdmin = requireRole('admin');
+
 export default authenticate;

@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
 import { connectMongoDB } from './db/mongodb.js';
 import sequelize from './db/sequelize.js';
-import { authenticate } from './middleware/auth.js';
+import { authenticate, requireAdmin } from './middleware/auth.js';
 import Event from './models/Event.js';
 import SystemLog from './models/SystemLog.js';
 import { Booking, Tenant, User } from './models/index.js';
@@ -416,7 +416,7 @@ const getSystemLogs = async (request, response, next) => {
   }
 };
 
-app.get('/api/system-logs', authenticate, getSystemLogs);
+app.get('/api/system-logs', authenticate, requireAdmin, getSystemLogs);
 
 app.delete('/api/events/:id', authenticate, async (request, response, next) => {
   try {

@@ -104,13 +104,14 @@ describe('Week 7 authentication', () => {
     expect(response.status).toBe(401);
   });
 
-  test('GET /api/system-logs returns 200 with a valid token', async () => {
+  test('GET /api/system-logs returns 403 for a non-admin (student) token', async () => {
+    // Week 10: /api/system-logs is now admin-only. A valid student JWT is
+    // still *authenticated*, just not *authorized* for this admin-only route.
     const response = await request(app)
       .get('/api/system-logs')
       .set('Authorization', `Bearer ${authToken}`);
 
-    expect(response.status).toBe(200);
-    expect(Array.isArray(response.body)).toBe(true);
+    expect(response.status).toBe(403);
   });
 });
 
